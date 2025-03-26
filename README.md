@@ -4,7 +4,7 @@
 ![release](https://img.shields.io/github/v/release/dr5hn/countries-states-cities-database?style=flat-square)
 ![size](https://img.shields.io/github/repo-size/dr5hn/countries-states-cities-database?label=size&style=flat-square)
 
-Full Database of city state country available in JSON, MYSQL, PSQL, SQLITE, XML, YAML & CSV format.
+Full Database of city state country available in JSON, MYSQL, PSQL, SQLITE, XML, YAML, MONGODB & CSV format.
 All Countries, States & Cities are Covered & Populated with Different Combinations & Versions.
 ## API 🚀
 🎉 Introducing **API** for Countries States Cities Database.
@@ -18,22 +18,23 @@ All Countries, States & Cities are Covered & Populated with Different Combinatio
 - MYSQL
 - PSQL
 - SQLITE
+- SQLSERVER
+- MONGODB
 - XML
 - YAML
 - CSV
 
 ## Distribution Files Info
-| File                       | JSON               | MYSQL              | PSQL               | SQLITE             | XML                | YAML               | CSV                |
-| :------------------------- | :----------------- | :----------------- | :----------------- | :----------------- | :----------------- | :----------------- | :----------------- |
-| Regions                    | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Subregions                 | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Countries                  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| States                     | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Cities                     | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Country+States             | :white_check_mark: | NA                 | NA                 | :white_check_mark:                 | :white_check_mark: | :white_check_mark: | NA                 |
-| Country+Cities             | :white_check_mark: | NA                 | NA                 | :white_check_mark:                 | :white_check_mark: | :white_check_mark: | NA                 |
-| State+Cities               | :white_check_mark: | NA                 | NA                 | :white_check_mark:                 | :white_check_mark: | :white_check_mark: | NA                 |
-| Country+State+Cities/World | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | NA                 |
+| File                       | JSON               | MYSQL              | PSQL               | SQLITE             | SQLSERVER          | MONGODB            | XML                | YAML               | CSV                |
+| :------------------------- | :----------------- | :----------------- | :----------------- | :----------------- | :----------------- | :----------------- | :----------------- | :----------------- | :----------------- |
+| Regions                    | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Subregions                 | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Countries                  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| States                     | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Cities                     | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Country+States             | :white_check_mark: | NA                 | NA                 | NA                 | NA                 | NA                 | NA                 | NA                 | NA                 | NA                 |
+| Country+Cities             | :white_check_mark: | NA                 | NA                 | NA                 | NA                 | NA                 | NA                 | NA                 | NA                 | NA                 |
+| Country+State+Cities/World | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | NA                 | NA                 | NA                 | NA                 |
 
 ## Demo
 https://dr5hn.github.io/countries-states-cities-database/
@@ -42,20 +43,32 @@ https://dr5hn.github.io/countries-states-cities-database/
 Total Regions : 6 <br>
 Total Sub Regions : 22 <br>
 Total Countries : 250 <br>
-Total States/Regions/Municipalities : 5,084 <br>
-Total Cities/Towns/Districts : 150,573 <br>
+Total States/Regions/Municipalities : 5,038 <br>
+Total Cities/Towns/Districts : 151,024 <br>
 
-Last Updated On : 07th Sep 2024
+Last Updated On : 23th Mar 2025
 
 ## Next API Database Update
 
 The API database is regularly updated to ensure the latest data is available to users. The next scheduled update is on:
 
-**Upcoming API Database Update Date:** 1st October 2024
+**Upcoming API Database Update Date:** 8th April 2025
 
 Please note that this date is subject to change based on unforeseen circumstances. Although we strive to adhere to the schedule, there may be instances where the update date is missed. We apologize for any inconvenience caused in such cases.
 
 We appreciate your understanding and patience. Thank you for using the Countries States Cities Database!
+
+## Import MongoDB
+
+How to import MongoDB database?
+
+```bash
+# First extract the tar.gz file
+tar -xzvf world-mongodb-dump.tar.gz
+
+# Then restore the MongoDB dump
+mongorestore --host localhost:27017 --db world mongodb-dump/world
+```
 
 ## License
 This **Countries States Cities Database** is made available under the [Open Database License](https://github.com/dr5hn/countries-states-cities-database/blob/master/LICENSE). Any rights in individual contents of the database are licensed under the [Database Contents License](https://github.com/dr5hn/countries-states-cities-database/blob/master/.github/CONTENT_LICENSE).
@@ -104,7 +117,10 @@ Made with [contrib.rocks](https://contrib.rocks).
 Contribute towards better earth [**buy the world a tree**](https://ecologi.com/darshangada?r=60f2a36e67efcb18f734ffb8)
 
 ## Other Publishings
-Find this project on [data.world](https://data.world/dr5hn/country-state-city)
+Find this project on 
+* [data.world](https://data.world/dr5hn/country-state-city)
+* [kaggle](https://www.kaggle.com/datasets/darshangada/countries-states-cities-database/data)
+
 
 ## Follow me at
 <a href="https://github.com/dr5hn/"><img alt="Github @dr5hn" src="https://img.shields.io/static/v1?logo=github&message=Github&color=black&style=flat-square&label=" /></a> <a href="https://twitter.com/dr5hn/"><img alt="Twitter @dr5hn" src="https://img.shields.io/static/v1?logo=twitter&message=Twitter&color=black&style=flat-square&label=" /></a> <a href="https://www.linkedin.com/in/dr5hn/"><img alt="LinkedIn @dr5hn" src="https://img.shields.io/static/v1?logo=linkedin&message=LinkedIn&color=black&style=flat-square&label=&link=https://twitter.com/dr5hn" /></a>

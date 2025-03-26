@@ -1,4 +1,4 @@
-name: Export JSON/XML/YAML/CSV/MYSQL/PSQL/SQLITE
+name: Export JSON/XML/YAML/CSV/MYSQL/PSQL/SQLITE/SQLSERVER/MONGODB
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - master
     paths-ignore:
       - "**"
-      - "!scripts/export**"
+      - "!bin/Commands/Export**"
   workflow_dispatch:
     inputs:
       pass:
@@ -14,13 +14,13 @@ on:
         required: true
 
 jobs:
-  export_json_xml:
-    name: JSON/XML/YAML/CSV/MYSQL/PSQL/SQLITE
-    runs-on: ubuntu-latest
+  export:
+    name: JSON/XML/YAML/CSV/MYSQL/PSQL/SQLITE/SQLSERVER/MONGODB
+    runs-on: ubuntu-24.04
 
     strategy:
       matrix:
-        php-version: [8.1]
+        php-version: [8.2]
         node-version: [20.x]
       fail-fast: false
 
@@ -57,6 +57,23 @@ jobs:
           sudo -u postgres psql -c "CREATE DATABASE world;"
           sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
           sudo -u postgres psql -c "\l"
+
+      - name: Setup MongoDB
+        uses: supercharge/mongodb-github-action@1.10.0
+        with:
+          mongodb-version: '6.0'
+          mongodb-replica-set: rs0
+
+      - name: Install MongoDB Database Tools
+        run: |
+          # Download MongoDB Database Tools directly
+          wget https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-x86_64-100.7.3.deb
+          sudo dpkg -i mongodb-database-tools-ubuntu2204-x86_64-100.7.3.deb
+
+          rm -rf mongodb-database-tools-ubuntu2204-x86_64-100.7.3.deb
+
+          # Verify installation
+          mongoimport --version
 
       - name: Add clean commands to world.sql
         run: |
@@ -98,25 +115,26 @@ jobs:
           echo "current_date=$(date +'%dth %b %Y')" >> $GITHUB_ENV
 
       - name: Composer Dependencies
+        working-directory: ./bin
         run: |
-          cd scripts/vendor
           composer install
+          php console list
 
       - name: Export JSON
-        run: |
-          php scripts/export.php
+        working-directory: ./bin
+        run: php console export:json
 
       - name: Export XML
-        run: |
-          php scripts/export_xml.php
+        working-directory: ./bin
+        run: php console export:xml
 
       - name: Export YAML
-        run: |
-          php scripts/export_yaml.php
+        working-directory: ./bin
+        run: php console export:yaml
 
       - name: Export CSV
-        run: |
-          php scripts/export_csv.php
+        working-directory: ./bin
+        run: php console export:csv
 
       - name: Export MySQL SQL
         run: |
@@ -130,12 +148,12 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean -t regions > psql/regions.sql
-          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean -t subregions > psql/subregions.sql
-          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean -t countries > psql/countries.sql
-          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean -t states > psql/states.sql
-          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean -t cities > psql/cities.sql
-          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean > psql/world.sql
+          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean --if-exists -t regions > psql/regions.sql
+          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean --if-exists -t subregions > psql/subregions.sql
+          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean --if-exists -t countries > psql/countries.sql
+          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean --if-exists -t states > psql/states.sql
+          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean --if-exists -t cities > psql/cities.sql
+          pg_dump --dbname=postgresql://postgres:postgres@localhost/world -Fp --inserts --clean --if-exists > psql/world.sql
 
       - name: Export SQLite
         run: |
@@ -144,10 +162,40 @@ jobs:
           mysql2sqlite -d world -t countries --mysql-password root -u root -f sqlite/countries.sqlite3
           mysql2sqlite -d world -t states --mysql-password root -u root -f sqlite/states.sqlite3
           mysql2sqlite -d world -t cities --mysql-password root -u root -f sqlite/cities.sqlite3
-          mysql2sqlite -d world -t countries states --mysql-password root -u root -f sqlite/countries+states.sqlite3
-          mysql2sqlite -d world -t countries cities --mysql-password root -u root -f sqlite/countries+cities.sqlite3
-          mysql2sqlite -d world -t states cities --mysql-password root -u root -f sqlite/states+cities.sqlite3
           mysql2sqlite -d world --mysql-password root -u root -f sqlite/world.sqlite3
+
+      - name: Export SQL Server
+        working-directory: ./bin
+        run: php console export:sql-server
+
+      - name: Export MongoDB
+        working-directory: ./bin
+        run: |
+          php console export:mongodb
+          ls -la ../mongodb
+
+      - name: Import MongoDB
+        working-directory: ./mongodb
+        run: |
+          # Wait for MongoDB to be ready
+          sleep 5
+
+          echo "Importing collections..."
+          mongoimport --host localhost:27017 --db world --collection regions --file regions.json --jsonArray
+          mongoimport --host localhost:27017 --db world --collection subregions --file subregions.json --jsonArray
+          mongoimport --host localhost:27017 --db world --collection countries --file countries.json --jsonArray
+          mongoimport --host localhost:27017 --db world --collection states --file states.json --jsonArray
+          mongoimport --host localhost:27017 --db world --collection cities --file cities.json --jsonArray
+          echo "Import completed"
+
+          # Create a MongoDB dump
+          mongodump --host localhost:27017 --db world --out mongodb-dump
+
+          # Compress the dump
+          tar -czvf world-mongodb-dump.tar.gz mongodb-dump
+          echo "MongoDB dump created at mongodb/world-mongodb-dump.tar.gz"
+
+          rm -rf mongodb-dump regions.json subregions.json countries.json states.json cities.json
 
       - name: Update README.md
         run: |
@@ -161,12 +209,12 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
-          commit-message: Add exported JSON, CSV, XML, YAML, MYSQL, PSQL & SQLITE files
+          commit-message: Add exported JSON, CSV, XML, YAML, MYSQL, PSQL, SQLITE, MONGODB & SQL Server files
           committer: Darshan Gada <gadadarshan@gmail.com>
           signoff: true
           branch: export/Files
           delete-branch: true
-          title: "(chore): Export JSON, CSV, XML, YAML, MYSQL, PSQL & SQLITE files"
+          title: "(chore): Export JSON, CSV, XML, YAML, MYSQL, PSQL, SQLITE, MONGODB & SQL Server files"
           labels: |
             exports
             automated

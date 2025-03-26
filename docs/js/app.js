@@ -1,213 +1,330 @@
-// check see if your browser supports service workers
-// if ('serviceWorker' in navigator) {
-//     navigator.serviceWorker
-//         // register the service worker script
-//         .register('./sw.js')
-//         // using promises tell us if successful or there was an error
-//         .then(reg => {console.info('Service Worker registration successful: ', reg)})
-//         .catch(err => {console.warn('Service Worker setup failed: ', err)});
-// }
+// IndexedDB setup
+let db;
+const DB_NAME = 'CountryStateCityDB';
+const DB_VERSION = 1;
+const COLLECTIONS = ['regions', 'subregions', 'countries', 'states', 'cities'];
+const API_BASE = 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/master/json/';
 
-var db = new loki('csc.db');
+function deleteDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
 
-const countriesJSON = 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/master/countries.json';
-const statesJSON = 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/master/states.json';
-const citiesJSON = 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/master/cities.json';
+    request.onsuccess = () => {
+      console.log(`Database ${DB_NAME} successfully deleted`);
+      resolve();
+    };
+
+    request.onerror = (event) => {
+      console.error(`Error deleting database: ${event.target.error}`);
+      reject(event.target.error);
+    };
+  });
+}
+
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = event => reject("IndexedDB error: " + event.target.error);
+
+    request.onsuccess = event => {
+      db = event.target.result;
+      resolve(db);
+    };
+
+    request.onupgradeneeded = event => {
+      db = event.target.result;
+      COLLECTIONS.forEach(collectionName => {
+        if (!db.objectStoreNames.contains(collectionName)) {
+          const store = db.createObjectStore(collectionName, { keyPath: 'id' });
+
+          // Add indexes based on the collection
+          switch(collectionName) {
+            case 'subregions':
+              store.createIndex('region_id', 'region_id', { unique: false });
+              break;
+            case 'countries':
+              store.createIndex('subregion_id', 'subregion_id', { unique: false });
+              break;
+            case 'states':
+              store.createIndex('country_id', 'country_id', { unique: false });
+              break;
+            case 'cities':
+              store.createIndex('state_id', 'state_id', { unique: false });
+              break;
+          }
+        }
+      });
+      console.log('Database upgraded');
+    };
+  });
+}
 
 async function initializeData() {
-  var countries = db.getCollection("countries");
-  if (!countries) {
-    countries = db.addCollection('countries');
-    await fetch(countriesJSON)
-      .then(response => response.json())
-      .then(async (data) => {
-        await data.forEach((c) => {
-          countries.insert(c);
-          $('.countries-tb').append(`
-            <tr>
-              <td class="border px-4 py-2">
-                <span class="emoji">${c.emoji}</span> ${c.name}  <span class="inline-block bg-gray-200 rounded-full px-3 text-sm font-semibold text-gray-700">${c.iso2}</span> <button class="tooltip inline-block align-middle float-right" onclick="filterStates(${c.id})"><svg viewBox="0 0 20 20" fill="currentColor" class="arrow-circle-right w-6 h-6 text-pink-600"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"></path></svg><span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">Show States</span></button> <button class="tooltip inline-block align-middle float-right" onclick="toggleModal(${c.id}, 'countries')"><svg viewBox="0 0 20 20" fill="currentColor" class="information-circle w-6 h-6 text-blue-600"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg><span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">More Details</span></button>
-              </td>
-            </tr>
-          `);
-        });
-      });
+  console.log('Initializing data');
+  // Delete existing database if requested via URL parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('reset') === 'true') {
+    await deleteDatabase();
+    window.location.search = '';
   }
 
-  var states = db.getCollection("states");
-  if (!states) {
-    states = db.addCollection('states');
-    await fetch(statesJSON)
-      .then(response => response.json())
-      .then(async (data) => {
-        await data.forEach((d) => {
-          states.insert(d);
-        });
-      });
-  }
+  await openDB();
+  for (const collectionName of COLLECTIONS) {
+    const objectStore = db.transaction(collectionName, 'readonly').objectStore(collectionName);
+    const count = await new Promise(resolve => objectStore.count().onsuccess = e => resolve(e.target.result));
 
-  var cities = db.getCollection("cities");
-  if (!cities) {
-    cities = db.addCollection('cities');
-    await fetch(citiesJSON)
-      .then(response => response.json())
-      .then(async (data) => {
-        await data.forEach((d) => {
-          cities.insert(d);
+    if (count === 0) {
+      await fetch(`${API_BASE}${collectionName}.json`)
+        .then(response => response.json())
+        .then(async (data) => {
+          const transaction = db.transaction(collectionName, 'readwrite');
+          const store = transaction.objectStore(collectionName);
+          for (const item of data) {
+            store.add(item);
+          }
+          await new Promise(resolve => transaction.oncomplete = resolve);
         });
-      });
+    }
+
+    if (collectionName === 'regions') {
+      const regions = await getAllFromStore('regions');
+      renderRegions(regions);
+    }
   }
 }
 
-initializeData();
-
-async function filterStates($cid = null) {
-  let statesColl = db.getCollection("states");
-  let states = await statesColl.find({ country_id: parseInt($cid) });
-  let $states = $('.states-tb');
-  $states.html('');
-  $('.cities-tb').html('');
-  if (states.length) {
-    await states.forEach((s) => {
-      $states.append(`
-        <tr>
-          <td class="border px-4 py-2">
-            ${s.name}  <span class="inline-block bg-gray-200 rounded-full px-3 text-sm font-semibold text-gray-700">${s.state_code}</span> <button class="tooltip inline-block align-middle float-right" onclick="filterCities(${s.id})"><svg viewBox="0 0 20 20" fill="currentColor" class="arrow-circle-right w-6 h-6 text-pink-600"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"></path></svg><span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">Show Cities</span></button> <button class="tooltip inline-block align-middle float-right" onclick="toggleModal(${s.id}, 'states')"><svg viewBox="0 0 20 20" fill="currentColor" class="information-circle w-6 h-6 text-blue-600"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg><span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">More Details</span></button>
-          </td>
-        </tr>
-      `);
-    });
-  } else {
-    $states.append(`
-        <tr>
-          <td class="border px-4 py-2">
-            No States Found.
-          </td>
-        </tr>
-      `);
-  }
+function getAllFromStore(storeName) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, 'readonly');
+    const store = transaction.objectStore(storeName);
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }
 
-async function filterCities($sid = null) {
-  let citiesColl = db.getCollection("cities");
-  let cities = await citiesColl.find({ state_id: parseInt($sid) });
-  let $cities = $('.cities-tb');
-  $cities.html('');
-  if (cities.length) {
-    await cities.forEach((c) => {
-      $cities.append(`
-        <tr>
-          <td class="border px-4 py-2">
-            ${c.name} <button class="tooltip inline-block align-middle float-right" onclick="toggleModal(${c.id}, 'cities')"><svg viewBox="0 0 20 20" fill="currentColor" class="information-circle w-6 h-6 text-blue-600"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg><span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">More Details</span></button>
-          </td>
-        </tr>
-      `);
-    });
-  } else {
-    $cities.append(`
-        <tr>
-          <td class="border px-4 py-2">
-            No Cities Found.
-          </td>
-        </tr>
-      `);
+function renderRegions(regions) {
+  const regionsTb = document.querySelector('.regions-tb');
+  regionsTb.innerHTML = regions.map(r => `
+    <tr>
+      <td class="border px-4 py-2">
+        ${r.name}
+        <button class="tooltip inline-block align-middle float-right" onclick="filterSubregions(${r.id})">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="arrow-circle-right w-6 h-6 text-pink-600">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">Show Subregions</span>
+        </button>
+        <button class="tooltip inline-block align-middle float-right" onclick="toggleModal(${r.id}, 'regions')">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="information-circle w-6 h-6 text-blue-600">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">More Details</span>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function filterSubregions(regionId) {
+  if (typeof regionId === 'string') {
+    window.location.search = 'reset=true';
+    window.location.reload();
   }
+  const subregions = await getFromIndex('subregions', 'region_id', regionId);
+  renderSubregions(subregions);
+  document.querySelector('.countries-tb').innerHTML = '';
+  document.querySelector('.states-tb').innerHTML = '';
+  document.querySelector('.cities-tb').innerHTML = '';
+}
+
+async function getFromIndex(storeName, indexName, value) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, 'readonly');
+    const store = transaction.objectStore(storeName);
+    const index = store.index(indexName);
+    const request = index.getAll(value);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function renderSubregions(subregions) {
+  const subregionsTb = document.querySelector('.subregions-tb');
+  subregionsTb.innerHTML = subregions.length ? subregions.map(sr => `
+    <tr>
+      <td class="border px-4 py-2">
+        ${sr.name}
+        <button class="tooltip inline-block align-middle float-right" onclick="filterCountries(${sr.id})">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="arrow-circle-right w-6 h-6 text-pink-600">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">Show Countries</span>
+        </button>
+        <button class="tooltip inline-block align-middle float-right" onclick="toggleModal(${sr.id}, 'subregions')">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="information-circle w-6 h-6 text-blue-600">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">More Details</span>
+        </button>
+      </td>
+    </tr>
+  `).join('') : '<tr><td class="border px-4 py-2">No Subregions Found.</td></tr>';
+}
+
+async function filterCountries(subregionId) {
+  const countries = await getFromIndex('countries', 'subregion_id', subregionId);
+  renderCountries(countries);
+  document.querySelector('.states-tb').innerHTML = '';
+  document.querySelector('.cities-tb').innerHTML = '';
+}
+
+function renderCountries(countries) {
+  const countriesTb = document.querySelector('.countries-tb');
+  countriesTb.innerHTML = countries.map(c => `
+    <tr>
+      <td class="border px-4 py-2">
+        <span class="emoji">${c.emoji}</span> ${c.name}
+        <span class="inline-block bg-gray-200 rounded-full px-3 text-sm font-semibold text-gray-700">${c.iso2}</span>
+        <button class="tooltip inline-block align-middle float-right" onclick="filterStates(${c.id})">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="arrow-circle-right w-6 h-6 text-pink-600">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">Show States</span>
+        </button>
+        <button class="tooltip inline-block align-middle float-right" onclick="toggleModal(${c.id}, 'countries')">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="information-circle w-6 h-6 text-blue-600">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">More Details</span>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function filterStates(countryId) {
+  const states = await getFromIndex('states', 'country_id', countryId);
+  renderStates(states);
+  document.querySelector('.cities-tb').innerHTML = '';
+}
+
+function renderStates(states) {
+  const statesTb = document.querySelector('.states-tb');
+  statesTb.innerHTML = states.length ? states.map(s => `
+    <tr>
+      <td class="border px-4 py-2">
+        ${s.name}
+        <span class="inline-block bg-gray-200 rounded-full px-3 text-sm font-semibold text-gray-700">${s.state_code}</span>
+        <button class="tooltip inline-block align-middle float-right" onclick="filterCities(${s.id})">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="arrow-circle-right w-6 h-6 text-pink-600">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">Show Cities</span>
+        </button>
+        <button class="tooltip inline-block align-middle float-right" onclick="toggleModal(${s.id}, 'states')">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="information-circle w-6 h-6 text-blue-600">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">More Details</span>
+        </button>
+      </td>
+    </tr>
+  `).join('') : '<tr><td class="border px-4 py-2">No States Found.</td></tr>';
+}
+
+async function filterCities(stateId) {
+  const cities = await getFromIndex('cities', 'state_id', parseInt(stateId));
+  renderCities(cities);
+}
+
+function renderCities(cities) {
+  const citiesTb = document.querySelector('.cities-tb');
+  citiesTb.innerHTML = cities.length ? cities.map(c => `
+    <tr>
+      <td class="border px-4 py-2">
+        ${c.name}
+        <button class="tooltip inline-block align-middle float-right" onclick="toggleModal(${c.id}, 'cities')">
+          <svg viewBox="0 0 20 20" fill="currentColor" class="information-circle w-6 h-6 text-blue-600">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="tooltip-text bg-indigo-600 rounded text-white text-sm -mt-12">More Details</span>
+        </button>
+      </td>
+    </tr>
+  `).join('') : '<tr><td class="border px-4 py-2">No Cities Found.</td></tr>';
 }
 
 function filter(type) {
-  // Declare variables
-  var input, filter, table, tr, td, i, txtValue;
-  input = document.getElementById('search-' + type);
-  filter = input.value.toUpperCase();
-  table = document.getElementById(type);
-  tr = table.getElementsByTagName("tr");
+  const input = document.getElementById('search-' + type);
+  const filter = input.value.toUpperCase();
+  const table = document.getElementById(type);
+  const rows = table.getElementsByTagName("tr");
 
-  // Loop through all table rows, and hide those who don't match the search query
-  for (i = 0; i < tr.length; i++) {
-    td = tr[i].getElementsByTagName("td")[0];
-    if (td) {
-      txtValue = td.textContent || td.innerText;
-      // If the data contains the search query, show the row. Otherwise, hide the row.
-      // Also, if the search query is empty, show all rows.
-      if (txtValue.toUpperCase().indexOf(filter) > -1 || filter === "") {
-        tr[i].style.display = "";
-      } else {
-        tr[i].style.display = "none";
+  for (let row of rows) {
+    const cell = row.getElementsByTagName("td")[0];
+    if (cell) {
+      const txtValue = cell.textContent || cell.innerText;
+      row.style.display = txtValue.toUpperCase().includes(filter) || filter === "" ? "" : "none";
+    }
+  }
+}
+
+const overlay = document.querySelector('.modal-overlay');
+overlay.addEventListener('click', toggleModal);
+
+document.querySelectorAll('.modal-close').forEach(el => el.addEventListener('click', toggleModal));
+
+document.addEventListener('keydown', (evt) => {
+  if ((evt.key === "Escape" || evt.key === "Esc") && document.body.classList.contains('modal-active')) {
+    toggleModal();
+  }
+});
+
+async function toggleModal(id = null, type = null) {
+  const body = document.querySelector('body');
+  const modal = document.querySelector('.modal');
+  modal.classList.toggle('opacity-0');
+  modal.classList.toggle('pointer-events-none');
+  body.classList.toggle('modal-active');
+
+  if (id && type) {
+    const transaction = db.transaction(type, 'readonly');
+    const store = transaction.objectStore(type);
+    const request = store.get(parseInt(id));
+
+    request.onsuccess = (event) => {
+      const item = event.target.result;
+      if (item) {
+        document.querySelector('.modal-title').textContent = item.name;
+        document.getElementById('modal-code').textContent = JSON.stringify(item, null, 2);
       }
-    }
+    };
+
+    request.onerror = (event) => {
+      console.error("Error fetching item:", event.target.error);
+    };
   }
 }
 
-// Modal
-const overlay = document.querySelector('.modal-overlay')
-overlay.addEventListener('click', toggleModal)
 
-var closemodal = document.querySelectorAll('.modal-close')
-for (var i = 0; i < closemodal.length; i++) {
-  closemodal[i].addEventListener('click', toggleModal)
-}
-
-document.onkeydown = function (evt) {
-  evt = evt || window.event
-  var isEscape = false
-  if ("key" in evt) {
-    isEscape = (evt.key === "Escape" || evt.key === "Esc")
-  } else {
-    isEscape = (evt.keyCode === 27)
-  }
-  if (isEscape && document.body.classList.contains('modal-active')) {
-    toggleModal()
-  }
-};
-
-async function toggleModal($id = null, $type = null) {
-  const body = document.querySelector('body')
-  const modal = document.querySelector('.modal')
-  modal.classList.toggle('opacity-0')
-  modal.classList.toggle('pointer-events-none')
-  body.classList.toggle('modal-active')
-
-  if ($id && $type) {
-    let content = { name: '' };
-    if ($type == 'countries') {
-      let countries = db.getCollection($type);
-      let country = await countries.findOne({ id: parseInt($id) });
-      delete country.$loki;
-      delete country.meta;
-      content = { ...country };
-    } else if ($type == 'states') {
-      let states = db.getCollection($type);
-      let state = await states.findOne({ id: parseInt($id) });
-      delete state.$loki;
-      delete state.meta;
-      content = { ...state };
-    } else if ($type == 'cities') {
-      let cities = db.getCollection($type);
-      let city = await cities.findOne({ id: parseInt($id) });
-      delete city.$loki;
-      delete city.meta;
-      content = { ...city };
-    }
-    $('.modal-title').html(content.name);
-    $('#modal-code').html(JSON.stringify(content, undefined, 2));
-  }
-}
-
-// Copy to clipboard
-const textArea = document.createElement('textarea');
-const copyMeOnClipboard = () => {
+// Optimized copy to clipboard function
+const copyToClipboard = () => {
   const copyText = document.getElementById("modal-code").textContent;
-  textArea.textContent = copyText;
-  document.body.append(textArea);
-  textArea.setSelectionRange(0, 99999); // used for mobile phone
-  textArea.select();
-  document.execCommand("copy");
-  $('.copy-to-clipboard').text('Copied 🎉');
-  $('.copy-to-clipboard').addClass('opacity-50 cursor-not-allowed');
-  setTimeout(() => {
-    $('.copy-to-clipboard').text('Copy 📋');
-    $('.copy-to-clipboard').removeClass('opacity-50 cursor-not-allowed');
-  }, 3000);
+  navigator.clipboard.writeText(copyText).then(() => {
+    const copyBtn = document.querySelector('.copy-to-clipboard');
+    copyBtn.textContent = 'Copied 🎉';
+    copyBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    setTimeout(() => {
+      copyBtn.textContent = 'Copy 📋';
+      copyBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }, 3000);
+  });
 }
 
+document.querySelector('.copy-to-clipboard').addEventListener('click', copyToClipboard);
 
+// Add this line to initialize the database when the page loads
+window.addEventListener('load', initializeData);
